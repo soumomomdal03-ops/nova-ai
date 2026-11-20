@@ -29,39 +29,40 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Find Android project
-        id: project
+      - name: Extract Nova AI Project ZIP
         shell: bash
         run: |
-          FILE=$(find . -type f \( -name settings.gradle -o -name settings.gradle.kts \) -not -path '*/.gradle/*' -print -quit)
+          ZIP_FILE="NovaAI-GitHub-Ready.zip"
 
-          if [ -z "$FILE" ]; then
-            echo "ERROR: Android Gradle project not found!"
-            find . -maxdepth 4 -type f | head -100
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: NovaAI-GitHub-Ready.zip not found!"
+            ls -la
             exit 1
           fi
 
-          DIR="${FILE%/*}"
-          if [ "$DIR" = "$FILE" ]; then DIR="."; fi
+          mkdir -p "$RUNNER_TEMP/nova-project"
+          unzip -q "$ZIP_FILE" -d "$RUNNER_TEMP/nova-project"
 
-          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
-          echo "Found Android project: $DIR"
+          if [ ! -f "$RUNNER_TEMP/nova-project/settings.gradle.kts" ]; then
+            echo "ERROR: settings.gradle.kts not found after extraction"
+            find "$RUNNER_TEMP/nova-project" -maxdepth 4 -type f
+            exit 1
+          fi
 
-      - name: Build Debug APK
+          echo "Nova AI project extracted successfully."
+
+      - name: Build Nova AI Debug APK
         shell: bash
         run: |
-          DIR="${{ steps.project.outputs.dir }}"
-
-          if [ -f "$DIR/gradlew" ]; then
-            chmod +x "$DIR/gradlew"
-            "$DIR/gradlew" -p "$DIR" --no-daemon :app:assembleDebug
-          else
-            gradle -p "$DIR" --no-daemon :app:assembleDebug
-          fi
+          gradle \
+            -p "$RUNNER_TEMP/nova-project" \
+            --no-daemon \
+            :app:assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: NovaAI-debug-apk
-          path: '**/app/build/outputs/apk/debug/*.apk'
+          path: ${{ runner.temp }}/nova-project/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 7
